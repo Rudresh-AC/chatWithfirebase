@@ -1,10 +1,12 @@
 import {
-  Children,
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
+import { createContext, useContext, useEffect, useState } from "react";
+import { auth, db } from "../firebaseConfig";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 
 export const AuthContext = createContext();
 
@@ -13,25 +15,81 @@ export const AuthContextProvider = ({ children }) => {
   const [isAuthenticated, setIsAuntenticated] = useState(undefined);
 
   useEffect(() => {
-    // onAuthstateChanged
-    // setTimeout(() => {
-    setIsAuntenticated(false);
-    // }, 3000);
-  });
+    const unsub = onAuthStateChanged(auth, (user) => {
+      console.log("got user:", user);
+      if (user) {
+        setIsAuntenticated(true);
+        setUser(user);
+        updateUserData(user.uid);
+      } else {
+        setIsAuntenticated(false);
+        setUser(null);
+      }
+    });
+    return unsub;
+  }, []);
+
+  const updateUserData = async (userId) => {
+    const docRef = doc(db, "users", userId);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists) {
+      let data = docSnap.data();
+      setUser({
+        ...user,
+        username: data.username,
+        profileUrl: data.profileUrl,
+        userId: data.userId,
+      });
+    }
+  };
 
   const login = async (email, password) => {
     try {
-    } catch (e) {}
+      const response = await signInWithEmailAndPassword(auth, email, password);
+      return { success: true };
+    } catch (e) {
+      let msg = e.message;
+      if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
+      if (msg.includes("(auth/invalid-credential)")) msg = "Wrong credentials";
+      return { success: false, msg };
+    }
   };
 
   const logout = async () => {
     try {
-    } catch (e) {}
+      await signOut(auth);
+      return { success: true };
+    } catch (e) {
+      return { success: false, msg: e.message, error: e };
+    }
   };
 
   const register = async (email, password, username, profileUrl) => {
     try {
-    } catch (e) {}
+      const response = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      // console.log("response.user :", response?.user);
+
+      await setDoc(doc(db, "users", response?.user?.uid), {
+        username,
+        profileUrl,
+        userId: response?.user?.uid,
+      });
+      return {
+        success: true,
+        data: response?.user,
+      };
+    } catch (e) {
+      let msg = e.message;
+      if (msg.includes("(auth/invalid-email)")) msg = "Invalid email";
+      if (msg.includes("(auth/email-already-in-use)"))
+        msg = "This email is already in use";
+      return { success: false, msg };
+    }
   };
 
   return (
